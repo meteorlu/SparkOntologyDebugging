@@ -8,6 +8,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
+import org.scalactic.Accumulation
 import utils.Triple
 
 import scala.collection.mutable.{Map, Set}
@@ -36,7 +37,7 @@ object Justification_v6 {
   var edgeRDD: RDD[Edge[(Long,Boolean)]] = null
   //构造图Graph[VD,ED]
   var graph: Graph[Boolean, (Long,Boolean)] = null
-  var oneStepMaps:Broadcast[Map[Long,Map[Long,Set[Long]]]] = null
+  //  var oneStepMaps:Broadcast[Map[VertexId,Map[Long,Set[Long]]]] = null
   var isEnd:Broadcast[Boolean] = null
 
   def main(args: Array[String]) {
@@ -69,18 +70,18 @@ object Justification_v6 {
     val conf = new SparkConf()
       .setAppName("SimpleGraphX")
       .setMaster("local")
-    val sc = new SparkContext(conf)
+    var sc = new SparkContext(conf)
     try{
       CassandraDB.connect()
-//      var datarows = CassandraDB.session.execute("select * from mrjks.justifications limit 5;")
-//      import scala.collection.JavaConversions._
-//      for (row <- datarows) {
-//        var triple = new utils.Triple(row.getLong("sub"),row.getLong("pre"),row.getLong("obj"),false)
-//        dataRows.add(triple)
-//      }
+      //      var datarows = CassandraDB.session.execute("select * from mrjks.justifications limit 5;")
+      //      import scala.collection.JavaConversions._
+      //      for (row <- datarows) {
+      //        var triple = new utils.Triple(row.getLong("sub"),row.getLong("pre"),row.getLong("obj"),false)
+      //        dataRows.add(triple)
+      //      }
       dataRows.add(new utils.Triple(579225L,0,34359751031L,false))
       for (data <- dataRows){
-//        --subject 8589955511 --predicate 0 --object 30064810538
+        //        --subject 8589955511 --predicate 0 --object 30064810538
         println("--subject "+data.subject+" --predicate "+data.predicate+" --object "+data._object)
         initParams()
         var target = (data.subject,data.predicate,data._object)
@@ -103,6 +104,23 @@ object Justification_v6 {
           graph = Graph(vertexRDD,edgeRDD)
           //Pregel API
           import scala.collection.mutable.Map
+
+          val graphOneStep = graph.aggregateMessages[Map[Long,Set[Long]]](
+            e =>{
+              e.sendToDst( Map(e.attr._1 -> Set(e.srcId)))
+            },(a,b) =>{
+              var map1 = a
+              var map2 = b
+              for(key1 <- map2.keySet){
+                if(map1.contains(key1)){
+                  map1(key1) ++= map2(key1)
+                }else{
+                  map1 ++= Map(key1 -> map2(key1))
+                }
+              }
+              a
+            }
+          ).collectAsMap()
           val oneStep:Map[Long,Map[Long,Set[Long]]] =
             graph.edges
               .map(e => Map(e.dstId -> Map(e.attr._1 -> Set(e.srcId))))
@@ -129,19 +147,24 @@ object Justification_v6 {
                 a
               }
               )
-          oneStepMaps = sc.broadcast(oneStep)
+          val oneStepMaps = sc.broadcast(graphOneStep)
+          var isEnd = sc.accumulator(0)
           var initSet = Set(targetNum)
-          var justifications:Array[Set[Long]] = Array()
+          var justifications:Array[Set[Long]] = Array(initSet)
+          var lastjust:Array[Set[Long]] = Array()
           //求取辩解
           var resultRDD = sc.makeRDD(Seq(initSet))
-          while (resultRDD.map(x=>(x,x.size)).reduce((x,y)=>(x._1,x._2+y._2))._2 > resultSize){
-            resultSize = resultRDD.map(x=>(x,x.size)).reduce((x,y)=>(x._1,x._2+y._2))._2
+          //          resultRDD.map(x=>(x,x.size)).reduce((x,y)=>(x._1,x._2+y._2))._2 > resultSize
+          while (!compareSets(justifications,lastjust)){
+            lastjust = justifications
+            //            resultSize = resultRDD.map(x=>(x,x.size)).reduce((x,y)=>(x._1,x._2+y._2))._2
             justifications = resultRDD.flatMap(x => {
               var results:Set[Set[Long]] = Set(x)
               //find one step justifications
               var tracingEntries:Map[Long,Set[Long]] = Map()
               x.foreach(vertex =>{
                 if(oneStepMaps.value.contains(vertex)){
+                  isEnd += -1
                   tracingEntries = oneStepMaps.value(vertex)
                   var temps:Set[Set[Long]] = results.clone()
                   for(temp <- temps){
@@ -223,8 +246,8 @@ object Justification_v6 {
             var edge = new Edge(verterFromNumber,vertexToNumber,relation)
             var edge_ = new Edge(vertexToNumber,verterFromNumber,relation)
             //            if(vertexMap.contains(verterFromNumber))
-            //            if(!edgeSet.exists(e => e.srcId == vertexToNumber && e.dstId == verterFromNumber) && !edgeSet.contains(edge)) {
-            if(!edgeSet.contains(edge)) {
+            if(!edgeSet.exists(e => e.srcId == vertexToNumber && e.dstId == verterFromNumber) && !edgeSet.contains(edge)) {
+              //            if(!edgeSet.contains(edge)) {
               println(edge.toString())
               edgeSet.add(edge)
               initVertexAndEdge(singleTriple)
@@ -241,7 +264,7 @@ object Justification_v6 {
     * @return
     */
   def getVertexNumber(vertexTuple:(Long,Long,Long)):Long = {
-//    var vertex = vertexMap.find((x:(Long,(Long,Long,Long))) => x._2.equals(vertexTuple))
+    //    var vertex = vertexMap.find((x:(Long,(Long,Long,Long))) => x._2.equals(vertexTuple))
     if(vertexMap.contains(vertexTuple))
       vertexMap(vertexTuple)
     else{
@@ -266,5 +289,19 @@ object Justification_v6 {
       eindex += 1
       result
     }
+  }
+  def compareSets(set1:Array[Set[Long]],set2:Array[Set[Long]]): Boolean = {
+    var result:Boolean = true
+    if(set1.length != set2.length) {
+      result = false
+    }
+    else{
+      set1.foreach(setitem => {
+        if(!set2.contains(setitem)){
+          result = false
+        }
+      })
+    }
+    result
   }
 }
