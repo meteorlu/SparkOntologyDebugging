@@ -72,14 +72,13 @@ object Justification_mapreduce {
     //设置运行环境
     val conf = new SparkConf()
       .setAppName("SimpleGraphX")
-      .setMaster("local")
     var sc = new SparkContext(conf)
     //初始化累加器
     accum = sc.longAccumulator("Accumulator")
     resultJustification = sc.broadcast(Set())
     try {
       CassandraDB.connect()
-      var fileSource = Source.fromFile("inputs.txt")
+      var fileSource = Source.fromFile("meteor/inputs.txt")
       var dataRows:Set[Tuple3[Long,Long,Long]] = Set()
       for(line <- fileSource.getLines) {
         var strs = line.split("\t")
@@ -117,7 +116,7 @@ object Justification_mapreduce {
     * @param results
     */
   def writeToResults(results:Set[(Array[String],Set[Set[Triple]])]) =  {
-    var writer = new PrintWriter(new File("resultsMapReduce.txt"))
+    var writer = new PrintWriter(new File("meteor/resultsMapReduce.txt"))
     results.foreach(r => {
       writer.println(r._1.apply(0)+"\t"+r._1.apply(1)+"\t"+r._1.apply(2))
       //      writer.println("Justifications:")
@@ -253,7 +252,7 @@ object Justification_mapreduce {
 //      println(reduceRdd.sortBy(x=>x._1.toString()).collect().foreach(println))
       findJustifications(reduceRdd)
     }else{
-      resultJustification.value.foreach(j => println("#####just"+j))
+//      resultJustification.value.foreach(j => println("#####just"+j))
     }
   }
   def compareSetTriples(set1:Set[Triple],set2:Set[Triple]): Boolean = {

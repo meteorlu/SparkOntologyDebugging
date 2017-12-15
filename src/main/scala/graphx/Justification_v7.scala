@@ -52,7 +52,6 @@ object Justification_v7 {
     //设置运行环境
     val conf = new SparkConf()
       .setAppName("SimpleGraphX")
-      .setMaster("local")
     var sc = new SparkContext(conf)
     try {
       CassandraDB.connect()
@@ -63,7 +62,7 @@ object Justification_v7 {
 //        var triple = new utils.Triple(row.getLong("sub"), row.getLong("pre"), row.getLong("obj"), false)
 //        dataRows.add(triple)
 //      }
-      var fileSource = Source.fromFile("inputs.txt")
+      var fileSource = Source.fromFile("meteor/inputs.txt")
       for(line <- fileSource.getLines) {
         var strs = line.split("\t")
         sub = strs(0).toLong
@@ -126,6 +125,7 @@ object Justification_v7 {
           //          resultRDD.map(x=>(x,x.size)).reduce((x,y)=>(x._1,x._2+y._2))._2 > resultSize
           while (step < maxDepth) {
             step += 1
+            resultRDD = sc.makeRDD(justifications)
             justifications = resultRDD.flatMap(x => {
               var results: Set[Set[Long]] = Set(x)
               //find one step justifications
@@ -150,7 +150,7 @@ object Justification_v7 {
               })
               results
             }).collect()
-            resultRDD = sc.makeRDD(justifications)
+
           }
           end = System.nanoTime()
           var results = Array(target.toString(),(justifications.size).toString,((end-start)/1000000).toString)
@@ -280,10 +280,10 @@ object Justification_v7 {
     * @param results
     */
   def writeToResults(results:Set[(Array[String],Array[Set[Long]])]) =  {
-    var writer = new PrintWriter(new File("resultsNewJust.txt"))
+    var writer = new PrintWriter(new File("meteor/resultsNewJust.txt"))
     results.foreach(r => {
       writer.println(r._1.apply(0)+"\t"+r._1.apply(1)+"\t"+r._1.apply(2))
-      r._2.foreach(println(_))
+//      r._2.foreach(println(_))
     })
     writer.close()
   }
