@@ -62,7 +62,9 @@ object Justification_v7 {
 //        var triple = new utils.Triple(row.getLong("sub"), row.getLong("pre"), row.getLong("obj"), false)
 //        dataRows.add(triple)
 //      }
+      //从根目录下的文件中读取输入参数
       var fileSource = Source.fromFile("meteor/inputs.txt")
+      //每行对应一个三元组，使用\t分割的
       for(line <- fileSource.getLines) {
         var strs = line.split("\t")
         sub = strs(0).toLong
@@ -73,15 +75,16 @@ object Justification_v7 {
       }
 
       for (data <- dataRows) {
-        //        --subject 8589955511 --predicate 0 --object 30064810538
         println("###########--subject " + data.subject + " --predicate " + data.predicate + " --object " + data._object)
         initParams()
         var target = (data.subject, data.predicate, data._object)
+        //获取调试的开始时间
         start = System.nanoTime()
-        //init vertext and edge
+        //init vertext and edge，初始化边和顶点信息
         initVertexAndEdge(new utils.Triple(target._1, target._2, target._3, false))
         println("最大深度:" + maxDepth)
-
+        end = System.nanoTime()
+        println("构建子图耗时："+((end - start) / 1000000).toString)
         //判断是否有辩解
         if (vertexMap.size == 1 && edgeMap.isEmpty) {
           println("此三元组没有辩解")
@@ -98,11 +101,12 @@ object Justification_v7 {
           graph = Graph(vertexRDD, edgeRDD)
           //Pregel API
           import scala.collection.mutable.Map
-
+          //求取一步辩解信息
           val graphOneStep = graph.aggregateMessages[Map[Long, Set[Long]]](
             e => {
+              //消息传递函数，源节点传向目标节点，传递内容为顶点信息和边的属性的信息组成的map集合
               e.sendToDst(Map(e.attr._1 -> Set(e.srcId)))
-            }, (a, b) => {
+            }, (a, b) => {//对消息进行两两合并处理，同一条边属性的组成一个集合
               var map1 = a
               var map2 = b
               for (key1 <- map2.keySet) {
@@ -115,7 +119,7 @@ object Justification_v7 {
               a
             }
           ).collectAsMap()
-          val oneStepMaps = sc.broadcast(graphOneStep)
+          val oneStepMaps = sc.broadcast(graphOneStep)//将一步辩解集合保存在广播变量中，以便RDD进行访问
           var initSet = Set(targetNum)
           var justifications: Array[Set[Long]] = Array(initSet)
           var lastjust: Array[Set[Long]] = Array()
@@ -126,11 +130,11 @@ object Justification_v7 {
           while (step < maxDepth) {
             step += 1
             resultRDD = sc.makeRDD(justifications)
-            justifications = resultRDD.flatMap(x => {
+            justifications = resultRDD.flatMap(x => { //遍历每一个RDD元素的辩解，查看其是否可以继续回溯
               var results: Set[Set[Long]] = Set(x)
               //find one step justifications
               var tracingEntries: Map[Long, Set[Long]] = Map()
-              x.foreach(vertex => {
+              x.foreach(vertex => {//对集合中的每一个三元组查找其一步辩解，若存在则用一步辩解集合替换该三元组，不存在不做操作
                 if (oneStepMaps.value.contains(vertex)) {
                   tracingEntries = oneStepMaps.value(vertex)
                   var temps: Set[Set[Long]] = results.clone()
@@ -153,9 +157,11 @@ object Justification_v7 {
 
           }
           end = System.nanoTime()
+          //保存结果
           var results = Array(target.toString(),(justifications.size).toString,((end-start)/1000000).toString)
           resultSet.add((results,justifications))
         }
+        //输出三元组的子图的一些信息
         var str = data.subject +"\t"+ data.predicate+"\t"+data._object+"\t"+maxDepth++"\t"+vertexMap.size+"\t"+edgeMap.size
         println(str)
         //        tripleMessage.add(str)
@@ -210,6 +216,7 @@ object Justification_v7 {
       var vertexToNumber:Long = getVertexNumber(vertexTo)
 
       vertexStack.push(vertexToNumber)
+      //保存栈的最大深度
       if(vertexStack.size > maxDepth)
         maxDepth = vertexStack.size
       var tracingTriples:Set[utils.Triple] = utils.Util.tracing(triple)

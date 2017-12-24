@@ -2,6 +2,7 @@ package utils
 
 /**
   * Created by user on 2017/12/12.
+  * 一些关于Spark的配置
   */
 object SparkConfig {
   val master_local = "local[1]"

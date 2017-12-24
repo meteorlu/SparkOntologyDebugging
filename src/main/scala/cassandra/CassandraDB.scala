@@ -6,8 +6,9 @@ import com.datastax.driver.core.{Cluster, Session}
   * Created by user on 2017/5/23.
   */
 object CassandraDB {
-//  val CONTACT_POINTS:String = "192.168.171.112"
-  val CONTACT_POINTS:String = "127.0.0.1"
+  // CONTACT_POINTS：数据库地址
+  val CONTACT_POINTS:String = "192.168.171.112"
+//  val CONTACT_POINTS:String = "127.0.0.1"
   val PORT = 9042
   val KEYSPACE = "mrjks" // mr.j keyspace
 

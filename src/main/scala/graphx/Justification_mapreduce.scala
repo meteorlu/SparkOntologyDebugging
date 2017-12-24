@@ -95,6 +95,7 @@ object Justification_mapreduce {
         var rddInit: RDD[(Triple, Set[Triple])] = sc.makeRDD(Seq((triple, explanation)))
         findJustifications(rddInit)
         end = System.nanoTime()
+        //保存结果
         var results = Array(target.toString(), (resultJustification.value.size).toString, ((end - start) / 1000000).toString)
         resultSet.add((results, resultJustification.value))
       }

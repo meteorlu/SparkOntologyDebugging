@@ -42,6 +42,7 @@ object CollectTripleNews {
   var isEnd:Broadcast[Boolean] = null
 
   def main(args: Array[String]) {
+    //本函数并不是真正的调试函数，是用来找到某个三元组的依赖子图的深度，顶点数和边数
     findjustifications()
   }
   def findjustifications(): Unit ={
@@ -56,7 +57,7 @@ object CollectTripleNews {
     try{
       CassandraDB.connect()
       var tripleMessage:Set[String] = Set()
-      var datarows = CassandraDB.session.execute("select * from mrjks.justifications limit 50000;")
+      var datarows = CassandraDB.session.execute("select * from mrjks.justifications limit 5000;")
       import scala.collection.JavaConversions._
       for (row <- datarows) {
         var triple = new utils.Triple(row.getLong("sub"),row.getLong("pre"),row.getLong("obj"),false)
@@ -76,7 +77,7 @@ object CollectTripleNews {
 //        println(str)
         tripleMessage.add(str)
       }
-            var writer = new PrintWriter(new File("D:\\tripleMsg.txt"))
+            var writer = new PrintWriter(new File("D:\\tripleMsg"+System.currentTimeMillis()+".txt"))
             tripleMessage.foreach(writer.println(_))
             writer.close()
     }catch {
